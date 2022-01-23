@@ -68,19 +68,28 @@ double graph_func(double x, lua_State* L) {
     return z;   
 }
 
-void render_graph(SDL_Renderer *renderer, lua_State* L)
+void render_graph(SDL_Surface *surface, lua_State* L)
 {
-    SDL_Texture* buffer = SDL_CreateTexture(renderer,
-        SDL_PIXELFORMAT_BGRA8888, 
-        SDL_TEXTUREACCESS_STREAMING, 
-        S_WIDTH,
-        S_HEIGHT);
-    
-    int *pixels;
-    int pitch;
-    if (SDL_LockTexture(buffer, NULL, (void**) &pixels, &pitch)) 
-    {
-        printf("error in lock texture: %s\n", SDL_GetError());
+    if (SDL_LockSurface(surface) < 0) {
+        printf("error in SDL_LockSurface: %s", SDL_GetError());
+        exit(1);
+    }
+    memset(surface->pixels, 0, surface->pitch*S_HEIGHT);
+
+    /* horizontal graph line */
+    unsigned int set_y = to_screen(0, S_HEIGHT/2).y;
+    if (set_y < S_HEIGHT) {
+        for (int x = 0; x < S_WIDTH; ++x) {
+            ((int*)surface->pixels)[set_y * S_WIDTH + x] = 0x737373ff;
+        }
+    }
+
+    /* vertical graph line */
+    unsigned int set_x = to_screen(S_WIDTH/2, 0).x;
+    if (set_x < S_WIDTH) {
+        for (int y = 0; y < S_HEIGHT; ++y) {
+            ((int*)surface->pixels)[y * S_WIDTH + set_x] = 0x737373ff;
+        }
     }
 
     for (int x = 0; x < S_WIDTH; ++x)
@@ -92,15 +101,12 @@ void render_graph(SDL_Renderer *renderer, lua_State* L)
         y -= S_HEIGHT/2;
         y = to_screen(0, y).y;
         
-        if (y >= 0 && y <= FS_HEIGHT) {
+        if (y >= 0 && y < FS_HEIGHT) {
             int pos = ((int)y * S_WIDTH) + x;
-            pixels[pos] = 0xffffffff;
+            ((int*)surface->pixels)[pos] = 0xffffffff;
         }
     }
-
-    SDL_UnlockTexture(buffer);
-    SDL_RenderCopy(renderer, buffer, NULL, NULL);
-    SDL_DestroyTexture(buffer);
+    SDL_UnlockSurface(surface);
 }
 
 int main(int argc, char *argv[])
@@ -113,7 +119,8 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    SDL_Window *window = SDL_CreateWindow("graphs", 100, 100,
+    SDL_Window *window = SDL_CreateWindow("graphs", 
+                                    SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                                     S_WIDTH, S_HEIGHT, SDL_WINDOW_SHOWN);
     
     if (window == NULL) {
@@ -121,11 +128,9 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1,
-                                            SDL_RENDERER_ACCELERATED |
-                                            SDL_RENDERER_PRESENTVSYNC);
+    SDL_Surface *surface = SDL_GetWindowSurface(window);
 
-    if (renderer == NULL) {
+    if (surface == NULL) {
         SDL_DestroyWindow(window);
         fprintf(stderr, "SDL_CreateRenderer error: %s\n", SDL_GetError());
         return EXIT_FAILURE;
@@ -162,8 +167,6 @@ int main(int argc, char *argv[])
 
                 x_offset += before_scale.x - after_scale.x;
                 y_offset += before_scale.y - after_scale.y;
-
-                printf("scale: %g\n", scale);
                 break;
             case SDL_MOUSEMOTION:
                 mouse_x = e.motion.x;
@@ -198,22 +201,14 @@ int main(int argc, char *argv[])
             default: {}
             }
         }
-
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderClear(renderer);
         
         if (graph_okay) {
-            render_graph(renderer, L);
+            render_graph(surface, L);
         }
-        SDL_SetRenderDrawColor(renderer, 115, 115, 115, 255);
-        /* horizontal graph line */
-        SDL_RenderDrawLine(renderer, 0, to_screen(0, S_HEIGHT/2).y, S_WIDTH, to_screen(0, S_HEIGHT/2).y);
-        /* vertical graph line */
-        SDL_RenderDrawLine(renderer, to_screen(S_WIDTH/2, 0).x, 0, to_screen(S_WIDTH/2, 0).x, S_HEIGHT);
-
-        SDL_RenderPresent(renderer);
+        SDL_UpdateWindowSurface(window);
     }
 
+    lua_close(L);
     SDL_DestroyWindow(window);
     SDL_Quit();
 }
