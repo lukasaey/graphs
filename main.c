@@ -16,14 +16,14 @@
 #define FS_WIDTH 1200.0
 #define FS_HEIGHT 900.0
 
-#define STEP_DOWN 0.95
-#define STEP_UP 1.05
+#define STEP_DOWN 0.9
+#define STEP_UP 1.1
 
 const char* func_template = "f = function(x) return %s end";
 
 double scale = 1;
-float x_offset = 0;
-float y_offset = 0;
+double x_offset = 0;
+double y_offset = 0;
 
 typedef struct screen_pos {
     int x, y;
@@ -33,18 +33,17 @@ typedef struct world_pos {
     double x, y;
 } world_pos; 
 
-static inline screen_pos to_screen(double x, double y) {
-    return (screen_pos) {
-        .x = ((x - x_offset) * scale),
-        .y = ((y - y_offset) * scale),
-    };
-}  
-
-static inline world_pos to_world(int x, int y) {
-    return (world_pos) {
-        .x = ((x / scale) + x_offset - (S_WIDTH/2)),
-        .y = ((y / scale) + y_offset - (S_HEIGHT/2)), 
-    };
+static inline int to_screen_x(double x) {
+    return (x - x_offset) * scale;
+}
+static inline double to_world_x(float x) {
+    return (x / scale) + x_offset - (S_WIDTH/2);
+}
+static inline int to_screen_y(double y) {
+    return (y - y_offset) * scale;
+}
+static inline double to_world_y(float y) {
+    return (y / scale) + y_offset - (S_WIDTH/2);
 }
 
 double graph_func(double x, lua_State* L) {
@@ -77,7 +76,7 @@ void render_graph(SDL_Surface *surface, lua_State* L)
     memset(surface->pixels, 0, surface->pitch*S_HEIGHT);
 
     /* horizontal graph line */
-    unsigned int set_y = to_screen(0, S_HEIGHT/2).y;
+    unsigned int set_y = to_screen_y(S_HEIGHT/2);
     if (set_y < S_HEIGHT) {
         for (int x = 0; x < S_WIDTH; ++x) {
             ((int*)surface->pixels)[set_y * S_WIDTH + x] = 0x737373ff;
@@ -85,24 +84,24 @@ void render_graph(SDL_Surface *surface, lua_State* L)
     }
 
     /* vertical graph line */
-    unsigned int set_x = to_screen(S_WIDTH/2, 0).x;
+    unsigned int set_x = to_screen_x(S_WIDTH/2);
     if (set_x < S_WIDTH) {
         for (int y = 0; y < S_HEIGHT; ++y) {
             ((int*)surface->pixels)[y * S_WIDTH + set_x] = 0x737373ff;
         }
     }
 
-    for (int x = 0; x < S_WIDTH; ++x)
+    for (float x = 0; x < S_WIDTH; x += 0.01)
     {
-        double y = graph_func(to_world(x , 0).x, L);
+        double y = graph_func(to_world_x(x), L);
 
         //y /= scale; /* scale it */
         y = S_HEIGHT - y; /* invert it */
         y -= S_HEIGHT/2;
-        y = to_screen(0, y).y;
+        y = to_screen_y(y);
         
         if (y >= 0 && y < FS_HEIGHT) {
-            int pos = ((int)y * S_WIDTH) + x;
+            int pos = (int)y * S_WIDTH + (int)x;
             ((int*)surface->pixels)[pos] = 0xffffffff;
         }
     }
@@ -158,15 +157,17 @@ int main(int argc, char *argv[])
                 mouse_down = false;
                 break;
             case SDL_MOUSEWHEEL:
-                world_pos before_scale = to_world(mouse_x, mouse_y);
+                double x_before_scale = to_world_x(mouse_x);
+                double y_before_scale = to_world_y(mouse_y);
                 if (e.wheel.y > 0) 
                     scale *= STEP_UP;  
                 else
                     scale *= STEP_DOWN;
-                world_pos after_scale = to_world(mouse_x, mouse_y);
+                double x_after_scale = to_world_x(mouse_x);
+                double y_after_scale = to_world_y(mouse_y);
 
-                x_offset += before_scale.x - after_scale.x;
-                y_offset += before_scale.y - after_scale.y;
+                x_offset += x_before_scale - x_after_scale;
+                y_offset += y_before_scale - y_after_scale;
                 break;
             case SDL_MOUSEMOTION:
                 mouse_x = e.motion.x;
