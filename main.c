@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
-#include <assert.h>
 #include <math.h>
 
 #include <unistd.h>
@@ -16,22 +15,12 @@
 #define FS_WIDTH 1200.0
 #define FS_HEIGHT 900.0
 
-#define STEP_DOWN 0.9
-#define STEP_UP 1.1
-
-const char* func_template = "f = function(x) return %s end";
+#define STEP_DOWN 0.85
+#define STEP_UP 1.15
 
 double scale = 1;
 double x_offset = 0;
 double y_offset = 0;
-
-typedef struct screen_pos {
-    int x, y;
-} screen_pos;
-
-typedef struct world_pos {
-    double x, y;
-} world_pos; 
 
 static inline int to_screen_x(double x) {
     return (x - x_offset) * scale;
@@ -46,32 +35,25 @@ static inline double to_world_y(float y) {
     return (y / scale) + y_offset - (S_WIDTH/2);
 }
 
-double graph_func(double x, lua_State* L) {
+double graph_func(lua_State* L, double x) {
     lua_getglobal(L, "f");  /* function to be called */
     lua_pushnumber(L, x);   /* push 1st argument */
 
     if (lua_pcall(L, 1, 1, 0) != 0) {
-        printf("error running function `f': %s\n",
-                lua_tostring(L, -1));
-        luaL_dostring(L, "f = nil");
-        return 0;
+        printf("error running function `f': %s\n", lua_tostring(L, -1));
+        exit(EXIT_FAILURE);
     }
 
-    if (!lua_isnumber(L, -1)) {
-        puts("function `f' must return a number");
-        luaL_dostring(L, "f = nil");
-        return 0;
-    }
     double z = lua_tonumber(L, -1);
     lua_pop(L, 1);  /* pop returned value */
     return z;   
 }
 
-void render_graph(SDL_Surface *surface, lua_State* L)
+void render_graph(lua_State* L, SDL_Surface *surface, bool render_graph)
 {
     if (SDL_LockSurface(surface) < 0) {
         printf("error in SDL_LockSurface: %s", SDL_GetError());
-        exit(1);
+        exit(EXIT_FAILURE);
     }
     memset(surface->pixels, 0, surface->pitch*S_HEIGHT);
 
@@ -91,18 +73,20 @@ void render_graph(SDL_Surface *surface, lua_State* L)
         }
     }
 
-    for (float x = 0; x < S_WIDTH; x += 0.01)
+    if (render_graph)
     {
-        double y = graph_func(to_world_x(x), L);
+        for (double x = 0; x < S_WIDTH; x += 0.01)
+        {
+            double y = graph_func(L, to_world_x(x));
 
-        //y /= scale; /* scale it */
-        y = S_HEIGHT - y; /* invert it */
-        y -= S_HEIGHT/2;
-        y = to_screen_y(y);
-        
-        if (y >= 0 && y < FS_HEIGHT) {
-            int pos = (int)y * S_WIDTH + (int)x;
-            ((int*)surface->pixels)[pos] = 0xffffffff;
+            y = S_HEIGHT - y;
+            y -= S_HEIGHT/2;
+            y = to_screen_y(y);
+            
+            if (y >= 0 && y < FS_HEIGHT) {
+                int pos = (int)y * S_WIDTH + (int)x;
+                ((unsigned int*)surface->pixels)[pos] = 0xffffffff;
+            }
         }
     }
     SDL_UnlockSurface(surface);
@@ -110,7 +94,6 @@ void render_graph(SDL_Surface *surface, lua_State* L)
 
 int main(int argc, char *argv[])
 { 
-    /* don't need them */
     (void) argc; (void) argv;
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
@@ -140,7 +123,7 @@ int main(int argc, char *argv[])
     luaL_dostring(L, "f = function(x) return x*x end");
 
     bool quit = false;
-    bool graph_okay = true;
+    bool graph_okay = false;
     bool mouse_down = false;
     Sint32 mouse_x, mouse_y;
     SDL_Event e;
@@ -159,10 +142,10 @@ int main(int argc, char *argv[])
             case SDL_MOUSEWHEEL:
                 double x_before_scale = to_world_x(mouse_x);
                 double y_before_scale = to_world_y(mouse_y);
-                if (e.wheel.y > 0) 
-                    scale *= STEP_UP;  
-                else
-                    scale *= STEP_DOWN;
+
+                if (e.wheel.y > 0) scale *= STEP_UP;  
+                else scale *= STEP_DOWN;
+
                 double x_after_scale = to_world_x(mouse_x);
                 double y_after_scale = to_world_y(mouse_y);
 
@@ -184,16 +167,26 @@ int main(int argc, char *argv[])
                     char buf[128];
                     printf("f(x) = ");
                     scanf("%s.128", buf);
-                    char func_buf[164];
-                    sprintf(func_buf, func_template, buf);
-                    luaL_dostring(L, func_buf);
-                    graph_func(1, L);
-                    lua_getglobal(L, "f");
-                    if (lua_isnil(L, -1)) {
-                        puts("function f isn't valid");
+                    char func_buf[156];
+                    sprintf(func_buf, "f = function(x) return %s end", buf);
+                    if (luaL_dostring(L, func_buf)) {
+                        printf("invalid function: %s", lua_tostring(L, -1));
                         graph_okay = false;
                         break;
                     }
+                    lua_getglobal(L, "f");
+                    lua_pushnumber(L, 69);
+                    if (lua_pcall(L, 1, 1, 0) != 0) {
+                        printf("error in function `f': %s\n", lua_tostring(L, -1));
+                        graph_okay = false;
+                        break;
+                    }
+                    if (!lua_isnumber(L, -1)) {
+                        puts("function `f' must return a number");
+                        graph_okay = false;
+                        break;
+                    }
+                    lua_pop(L, 1);
                     graph_okay = true;
                     break;
                 default: {}
@@ -203,13 +196,13 @@ int main(int argc, char *argv[])
             }
         }
         
-        if (graph_okay) {
-            render_graph(surface, L);
-        }
+        render_graph(L, surface, graph_okay);
         SDL_UpdateWindowSurface(window);
     }
 
     lua_close(L);
     SDL_DestroyWindow(window);
     SDL_Quit();
+
+    return EXIT_SUCCESS;
 }
