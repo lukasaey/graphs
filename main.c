@@ -2,7 +2,6 @@
 #include <string.h>
 #include <stdbool.h>
 #include <math.h>
-
 #include <unistd.h>
 
 #include <SDL2/SDL.h>
@@ -15,8 +14,14 @@
 #define FS_WIDTH 1200.0
 #define FS_HEIGHT 900.0
 
-#define STEP_DOWN 0.85
-#define STEP_UP 1.15
+#define STEP_DOWN 0.875
+#define STEP_UP 1.125
+
+int clamp(int x, int min, int max) {
+    if (x < min) return min;
+    if (x > max) return max;
+    return x;
+}
 
 double scale = 1;
 double x_offset = 0;
@@ -57,11 +62,13 @@ void render_graph(lua_State* L, SDL_Surface *surface, bool render_graph)
     }
     memset(surface->pixels, 0, surface->pitch*S_HEIGHT);
 
+    unsigned int* pixels = surface->pixels;
+
     /* horizontal graph line */
     unsigned int set_y = to_screen_y(S_HEIGHT/2);
     if (set_y < S_HEIGHT) {
         for (int x = 0; x < S_WIDTH; ++x) {
-            ((int*)surface->pixels)[set_y * S_WIDTH + x] = 0x737373ff;
+            pixels[set_y * S_WIDTH + x] = 0x737373ff;
         }
     }
 
@@ -69,24 +76,33 @@ void render_graph(lua_State* L, SDL_Surface *surface, bool render_graph)
     unsigned int set_x = to_screen_x(S_WIDTH/2);
     if (set_x < S_WIDTH) {
         for (int y = 0; y < S_HEIGHT; ++y) {
-            ((int*)surface->pixels)[y * S_WIDTH + set_x] = 0x737373ff;
+            pixels[y * S_WIDTH + set_x] = 0x737373ff;
         }
     }
 
     if (render_graph)
     {
-        for (double x = 0; x < S_WIDTH; x += 0.01)
+        double last_y = S_HEIGHT - graph_func(L, to_world_x(0)) - S_HEIGHT/2;
+        for (double x = 0; x < S_WIDTH; x += 1)
         {
-            double y = graph_func(L, to_world_x(x));
+            double world_y = graph_func(L, to_world_x(x));
+            world_y = S_HEIGHT - world_y;
+            world_y -= S_HEIGHT/2;
 
-            y = S_HEIGHT - y;
-            y -= S_HEIGHT/2;
-            y = to_screen_y(y);
+            int y1 = to_screen_y(world_y);
+            int y2 = to_screen_y(last_y);
+
+            y1 = clamp(y1, 0, S_HEIGHT-1);
+            y2 = clamp(y2, 0, S_HEIGHT-1);
             
-            if (y >= 0 && y < FS_HEIGHT) {
-                int pos = (int)y * S_WIDTH + (int)x;
-                ((unsigned int*)surface->pixels)[pos] = 0xffffffff;
+            int step = (y2 < y1) ? -1 : 1;
+            for (int i = 0, y = y1; i < abs(y1 - y2) + 1; ++i, y += step) 
+            {
+                unsigned int pos = y * S_WIDTH + (int)x;
+                pixels[pos] = 0xffffffff;
             }
+            
+            last_y = world_y;
         }
     }
     SDL_UnlockSurface(surface);
@@ -120,7 +136,10 @@ int main(int argc, char *argv[])
 
     lua_State *L = luaL_newstate();
     luaL_openlibs(L);
-    luaL_dostring(L, "f = function(x) return x*x end");
+    if (luaL_dostring(L, "f = function(x) return x*x end")) {
+        fputs(lua_tostring(L, -1), stderr);
+        return EXIT_FAILURE;
+    }
 
     bool quit = false;
     bool graph_okay = false;

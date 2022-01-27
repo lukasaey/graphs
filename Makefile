@@ -1,8 +1,10 @@
-DEBUGARGS=-g -Wall -Wextra -Wshadow -lmingw32 -lSDL2main -lSDL2 -L. -l:liblua54.a
-RELEASEARGS=-lmingw32 -lSDL2main -lSDL2 -O2 -L. -l:liblua54.a
+LIBS=-lmingw32 -lSDL2main -lSDL2 -L./lib -l:liblua54.a
+
+DEBUGARGS=-g -Wall -Wextra -Wshadow $(LIBS)
+RELEASEARGS=-O2 $(LIBS)
 
 SRC=.
-OBJ=.
+OBJ=obj
 BIN=.
 
 _OBJS = main.o 
