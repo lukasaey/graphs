@@ -1,7 +1,9 @@
-LIBS=-lmingw32 -lSDL2main -lSDL2 -L./lib -l:liblua54.a
+LIBS=-lmingw32 -lSDL2main -lSDL2 -L./lib -L./ -ltcc
 
-DEBUGARGS=-g -Wall -Wextra -Wshadow $(LIBS)
-RELEASEARGS=-O2 $(LIBS)
+COMMONARGS=-I./include
+
+DEBUGARGS=$(COMMONARGS) -g -Wall -Wextra -Wshadow $(LIBS)
+RELEASEARGS=$(COMMONARGS) -O2 $(LIBS)
 
 SRC=.
 OBJ=obj
