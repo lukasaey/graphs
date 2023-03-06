@@ -59,7 +59,7 @@ static inline double to_world_y(float y)
     return (y / scale) + y_offset - (S_WIDTH / 2);
 }
 
-void render_graph(SDL_Surface *surface, bool render_graph)
+void render_graph(SDL_Surface *surface)
 {
     if (SDL_LockSurface(surface) < 0)
     {
@@ -90,36 +90,36 @@ void render_graph(SDL_Surface *surface, bool render_graph)
         }
     }
 
-    if (render_graph)
+
+    // double last_y = S_HEIGHT - graph_func(to_world_x(0)) - S_HEIGHT / 2;
+
+    for (double x = 0; x < S_WIDTH; x += 0.005)
     {
-        double last_y = S_HEIGHT - graph_func(to_world_x(0)) - S_HEIGHT / 2;
-        for (double x = 0; x < S_WIDTH; x += 1)
-        {
-            double world_y = graph_func(to_world_x(x));
-            world_y = S_HEIGHT - world_y;
-            world_y -= S_HEIGHT / 2;
+        double world_y = graph_func(to_world_x(x));
+        world_y = S_HEIGHT - world_y;
+        world_y -= S_HEIGHT / 2;
 
-            int y1 = to_screen_y(world_y);
-            int y2 = to_screen_y(last_y);
+        //int y1 = to_screen_y(last_y);
+        int y2 = to_screen_y(world_y);
 
-            if ((y1 > S_HEIGHT - 1 && y2 > S_HEIGHT - 1) || (y1 < 0 && y2 < 0))
-            {
-                continue;
-            }
+        if (y2 < 0 || y2 >= S_HEIGHT) continue;
+        pixels[y2 * S_WIDTH + (int)x] = 0xffffffff;
 
-            y1 = clamp(y1, 0, S_HEIGHT - 1);
-            y2 = clamp(y2, 0, S_HEIGHT - 1);
+        // y1 = clamp(y1, 0, S_HEIGHT - 1);
+        // y2 = clamp(y2, 0, S_HEIGHT - 1);
 
-            int step = (y2 < y1) ? -1 : 1;
-            for (int i = 0, y = y1; i < abs(y1 - y2) + 1; ++i, y += step)
-            {
-                unsigned int pos = y * S_WIDTH + (int)x;
-                pixels[pos] = 0xffffffff;
-            }
+        // int step = (y2 < y1) ? -1 : 1;
+        // int y = y1;
+        // for (int i = 0; i < abs(y1 - y2) + 1; ++i)
+        // {
+        //     unsigned int pos = y * S_WIDTH + (unsigned int)x;
+        //     pixels[pos] = 0xffffffff;
+        //     y += step;
+        // }
 
-            last_y = world_y;
-        }
+        // last_y = world_y;
     }
+    
     SDL_UnlockSurface(surface);
 }
 
@@ -211,9 +211,10 @@ int main(int argc, char *argv[])
                 switch (e.key.keysym.scancode)
                 {
                 case SDL_SCANCODE_RETURN:
-                    char scan_buf[128];
-                    char func_buf[156];
+                    char scan_buf[256];
+                    char func_buf[256];
 
+                    fflush(stdin);
                     printf("f(x) = ");
                     scanf("%s", scan_buf);
 
@@ -246,7 +247,7 @@ int main(int argc, char *argv[])
             }
         }
 
-        render_graph(surface, true);
+        render_graph(surface);
         SDL_UpdateWindowSurface(window);
     }
 
